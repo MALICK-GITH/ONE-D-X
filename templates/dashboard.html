@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+
+{% block title %}ONE-DELUX-FAST - Dashboard{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-4">
+        <div>
+            <div class="eyebrow mb-2"><i class="fa-solid fa-chart-simple"></i> Pilotage</div>
+            <h1 class="section-title mb-1">Dashboard opérationnel</h1>
+        <div class="section-subtitle">Vue consolidée des modules, du cache et de la qualité des données.</div>
+        </div>
+        <div class="d-flex gap-2 stack-mobile">
+            <button class="btn btn-primary" id="refreshStats"><i class="fa-solid fa-rotate me-2"></i>Rafraîchir</button>
+            <button class="btn btn-outline-light" id="clearCache"><i class="fa-solid fa-broom me-2"></i>Vider le cache</button>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-4" id="dashboard-metrics">
+    <div class="col-md-3"><div class="metric-card"><div class="metric-value" id="api-requests">-</div><div class="metric-label">Requêtes</div></div></div>
+    <div class="col-md-3"><div class="metric-card"><div class="metric-value" id="api-success">-</div><div class="metric-label">Fiabilité</div></div></div>
+    <div class="col-md-3"><div class="metric-card"><div class="metric-value" id="cache-hits">-</div><div class="metric-label">Cache</div></div></div>
+    <div class="col-md-3"><div class="metric-card"><div class="metric-value" id="live-events">-</div><div class="metric-label">En direct</div></div></div>
+    </div>
+
+<div class="row g-4">
+    <div class="col-xl-4">
+        <div class="panel h-100">
+            <div class="section-title">État des modules</div>
+            <div class="section-subtitle mb-3">Le système rend les blocs visibles sans exposer la couche technique.</div>
+            <div class="d-grid gap-3">
+                <div class="d-flex justify-content-between align-items-center">
+                    <span>Flux</span><span class="pill pill-soft">{{ 'Actif' if modules_status.api_client else 'Inactif' }}</span>
+                </div>
+                <div class="d-flex justify-content-between align-items-center">
+                    <span>Données</span><span class="pill pill-soft">{{ 'Actif' if modules_status.data_manager else 'Inactif' }}</span>
+                </div>
+                <div class="d-flex justify-content-between align-items-center">
+                    <span>Prédiction</span><span class="pill pill-soft">{{ 'Actif' if modules_status.prediction_engine else 'Inactif' }}</span>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-4">
+        <div class="panel h-100">
+            <div class="section-title">Navigation</div>
+            <div class="section-subtitle mb-3">Accès direct aux pages métier.</div>
+            <div class="d-grid gap-2">
+                <a class="btn btn-outline-light" href="/events">Événements</a>
+                <a class="btn btn-outline-light" href="/predictions">Prédictions</a>
+                <a class="btn btn-outline-light" href="/">Accueil</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="panel mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <div class="section-title mb-1">Qualité du flux</div>
+            <div class="section-subtitle">Indicateurs mobiles simples pour suivre l’activité en direct.</div>
+        </div>
+        <span class="pill pill-soft">Temps réel</span>
+    </div>
+    <div id="quality-box" class="info-card">
+        <div class="loading-block py-4">
+            <div class="spinner-ring"></div>
+            <div class="text-secondary">Chargement...</div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+    loadDashboard();
+    document.getElementById("refreshStats").addEventListener("click", loadDashboard);
+    document.getElementById("clearCache").addEventListener("click", async () => {
+        try {
+            await ONEDELUX.apiDelete("/api/cache");
+            loadDashboard();
+        } catch (error) {
+            console.error(error);
+        }
+    });
+});
+
+async function loadDashboard() {
+    await loadStatsAndQuality();
+}
+
+async function loadStatsAndQuality() {
+    try {
+        const data = await ONEDELUX.apiGet("/api/stats");
+        const api = data.api || {};
+        const cache = data.cache || {};
+        const summary = data.summary || {};
+
+        document.getElementById("api-requests").textContent = ONEDELUX.formatCount(api.total_requests || 0);
+        document.getElementById("api-success").textContent = `${((api.success_rate || 0) * 100).toFixed(1)}%`;
+        document.getElementById("cache-hits").textContent = ONEDELUX.formatCount(cache.hits || 0);
+        document.getElementById("live-events").textContent = ONEDELUX.formatCount(summary.live_events || 0);
+        document.getElementById("quality-box").innerHTML = `
+            <div class="mb-2 d-flex justify-content-between"><span>Événements</span><strong>${summary.total_events || 0}</strong></div>
+            <div class="mb-2 d-flex justify-content-between"><span>Ligues</span><strong>${summary.leagues_count || 0}</strong></div>
+            <div class="mb-2 d-flex justify-content-between"><span>Sports</span><strong>${summary.sports_count || 0}</strong></div>
+            <div class="d-flex justify-content-between"><span>Top live</span><strong>${summary.top_leagues?.[0]?.name || "-"}</strong></div>
+        `;
+    } catch (error) {
+        console.warn(error);
+        document.getElementById("quality-box").innerHTML = `<div class="text-danger">Erreur: ${ONEDELUX.escapeHtml(error.message)}</div>`;
+    }
+}
+
+</script>
+{% endblock %}

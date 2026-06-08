@@ -1,0 +1,151 @@
+{
+  "name": "AI-P Platform Integration Manifest",
+  "version": "1.0.0",
+  "base_url": "https://ai-p-hcuo.onrender.com",
+  "content_type": "application/json",
+  "auth": {
+    "type": "none"
+  },
+  "usage": {
+    "description": "Another platform can call these endpoints directly to retrieve predictions and service metadata.",
+    "required_headers": {
+      "Content-Type": "application/json"
+    }
+  },
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/api/status",
+      "purpose": "Check service availability and number of loaded models",
+      "response_example": {
+        "status": "ok",
+        "models_loaded": 4
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/models",
+      "purpose": "List loaded models and their metadata"
+    },
+    {
+      "method": "POST",
+      "path": "/api/predict",
+      "purpose": "Full fused prediction response",
+      "request_schema": {
+        "league": "string",
+        "homeTeam": "string",
+        "awayTeam": "string",
+        "home_odds": "number",
+        "draw_odds": "number",
+        "away_odds": "number",
+        "match_datetime": "optional datetime string",
+        "home_form_rate": "optional number",
+        "away_form_rate": "optional number",
+        "home_attack_avg": "optional number",
+        "away_attack_avg": "optional number",
+        "home_defense_avg": "optional number",
+        "away_defense_avg": "optional number",
+        "head_to_head_matches": "optional integer",
+        "head_to_head_home_winrate": "optional number"
+      },
+      "response_example": {
+        "home_goals": 2,
+        "away_goals": 1,
+        "total_goals": 3,
+        "over_under_2_5": "OVER",
+        "score_prediction": "2-1",
+        "confidence": 80.0,
+        "source": "ONE DELUX AI 2.0"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/predict/fusion",
+      "purpose": "Return the fused prediction payload"
+    },
+    {
+      "method": "POST",
+      "path": "/api/predict/over-under",
+      "purpose": "Predict over/under 2.5 goals",
+      "response_example": {
+        "over_under_2_5": "OVER",
+        "confidence": 69.2,
+        "source": "ONE DELUX AI 2.0"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/predict/home-goals",
+      "purpose": "Predict home goals",
+      "response_example": {
+        "home_goals": 2,
+        "source": "ONE DELUX AI 2.0"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/predict/away-goals",
+      "purpose": "Predict away goals",
+      "response_example": {
+        "away_goals": 1,
+        "source": "ONE DELUX AI 2.0"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/predict/total-goals",
+      "purpose": "Predict total goals",
+      "response_example": {
+        "total_goals": 3,
+        "source": "ONE DELUX AI 2.0"
+      }
+    }
+  ],
+  "model_contract": {
+    "models_loaded": 4,
+    "model_files": [
+      "over_under_2.5.joblib",
+      "team_home_goals.joblib",
+      "team_away_goals.joblib",
+      "match_total_goals.joblib"
+    ],
+    "feature_columns": [
+      "team_home_encoded",
+      "team_away_encoded",
+      "league_encoded",
+      "league_group_encoded",
+      "home_form_rate",
+      "away_form_rate",
+      "home_attack_avg",
+      "away_attack_avg",
+      "home_defense_avg",
+      "away_defense_avg",
+      "head_to_head_matches",
+      "head_to_head_home_winrate",
+      "hour",
+      "day_of_week"
+    ],
+    "feature_builder_rules": [
+      "Do not invent new features.",
+      "Keep the same column order as training.",
+      "Reuse the same label encoders and normalization rules.",
+      "Use the same preprocessing pipeline as the training script."
+    ]
+  },
+  "example_request": {
+    "league": "Premier League",
+    "homeTeam": "Arsenal",
+    "awayTeam": "Chelsea",
+    "home_odds": 1.9,
+    "draw_odds": 3.4,
+    "away_odds": 4.2,
+    "home_form_rate": 0.7,
+    "away_form_rate": 0.6,
+    "home_attack_avg": 2.1,
+    "away_attack_avg": 1.8,
+    "home_defense_avg": 0.9,
+    "away_defense_avg": 1.2,
+    "head_to_head_matches": 10,
+    "head_to_head_home_winrate": 0.55
+  }
+}

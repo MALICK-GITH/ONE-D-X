@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+
+{% block title %}ONE-DELUX-FAST - Événements{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-4">
+    <div>
+        <div class="eyebrow mb-2"><i class="fa-solid fa-flag"></i> Flux</div>
+        <h1 class="section-title mb-1">Événements actuels</h1>
+        <div class="section-subtitle">Recherche, filtrage et lecture cohérente des matchs disponibles.</div>
+    </div>
+    <div class="d-flex gap-2 stack-mobile">
+        <button class="btn btn-primary" id="refreshEvents"><i class="fa-solid fa-rotate me-2"></i>Rafraîchir</button>
+        <button class="btn btn-outline-light" id="liveOnlyToggle"><i class="fa-solid fa-bolt me-2"></i>Live seulement</button>
+    </div>
+</div>
+
+<div class="panel mb-4">
+    <div class="row g-3 align-items-center">
+        <div class="col-lg-8">
+            <input id="searchInput" class="form-control form-control-lg" placeholder="Rechercher une ligue, un sport ou une équipe..." />
+        </div>
+        <div class="col-lg-4">
+            <div class="d-grid">
+                <button class="btn btn-outline-light btn-lg" id="searchButton">Filtrer</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3 mb-4" id="event-summary">
+    <div class="col-md-3"><div class="metric-card"><div class="metric-value" id="sum-events">-</div><div class="metric-label">Événements</div></div></div>
+    <div class="col-md-3"><div class="metric-card"><div class="metric-value" id="sum-live">-</div><div class="metric-label">En direct</div></div></div>
+    <div class="col-md-3"><div class="metric-card"><div class="metric-value" id="sum-leagues">-</div><div class="metric-label">Ligues</div></div></div>
+    <div class="col-md-3"><div class="metric-card"><div class="metric-value" id="sum-sports">-</div><div class="metric-label">Sports</div></div></div>
+</div>
+
+<div id="loading" class="loading-block">
+    <div class="spinner-ring"></div>
+    <div class="text-secondary">Chargement des événements...</div>
+</div>
+
+<div id="events-grid" class="row g-3 d-none"></div>
+<div id="empty-state" class="empty-state d-none">
+    <i class="fa-regular fa-face-meh fa-2xl mb-3 text-secondary"></i>
+    <div>Aucun événement ne correspond à vos filtres.</div>
+</div>
+<div id="error-state" class="error-state d-none text-danger"></div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let liveOnly = false;
+let currentEvents = [];
+
+document.addEventListener("DOMContentLoaded", () => {
+    document.getElementById("refreshEvents").addEventListener("click", loadEvents);
+    document.getElementById("searchButton").addEventListener("click", loadEvents);
+    document.getElementById("liveOnlyToggle").addEventListener("click", () => {
+        liveOnly = !liveOnly;
+        document.getElementById("liveOnlyToggle").classList.toggle("btn-primary", liveOnly);
+        loadEvents();
+    });
+    document.getElementById("searchInput").addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+            loadEvents();
+        }
+    });
+    loadEvents();
+});
+
+async function loadEvents() {
+    const query = document.getElementById("searchInput").value.trim();
+    const loading = document.getElementById("loading");
+    const grid = document.getElementById("events-grid");
+    const empty = document.getElementById("empty-state");
+    const error = document.getElementById("error-state");
+
+    loading.classList.remove("d-none");
+    grid.classList.add("d-none");
+    empty.classList.add("d-none");
+    error.classList.add("d-none");
+
+    try {
+        const data = await ONEDELUX.apiGet("/api/events", {
+            limit: 60,
+            live_only: liveOnly ? "true" : "false",
+            search: query,
+        });
+        const events = data.events || [];
+        currentEvents = events;
+        updateSummary(data.summary || {});
+        renderEvents(events);
+        loading.classList.add("d-none");
+    } catch (err) {
+        loading.classList.add("d-none");
+        error.textContent = err.message;
+        error.classList.remove("d-none");
+    }
+}
+
+function updateSummary(summary) {
+    document.getElementById("sum-events").textContent = ONEDELUX.formatCount(summary.total_events || 0);
+    document.getElementById("sum-live").textContent = ONEDELUX.formatCount(summary.live_events || 0);
+    document.getElementById("sum-leagues").textContent = ONEDELUX.formatCount(summary.leagues_count || 0);
+    document.getElementById("sum-sports").textContent = ONEDELUX.formatCount(summary.sports_count || 0);
+}
+
+function renderEvents(events) {
+    const grid = document.getElementById("events-grid");
+    grid.innerHTML = events.length ? events.map(renderCard).join("") : "";
+    grid.classList.toggle("d-none", events.length === 0);
+    document.getElementById("empty-state").classList.toggle("d-none", events.length !== 0);
+}
+
+function renderCard(event) {
+    return `
+        <div class="col-lg-6 col-xl-4">
+            <div class="event-card p-3 h-100">
+                <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+                    ${ONEDELUX.statusPill(event.is_live)}
+                    <span class="pill pill-soft">${ONEDELUX.escapeHtml(event.sport_name)}</span>
+                </div>
+                <h5 class="mb-1">${ONEDELUX.escapeHtml(event.team1_name)} <span class="text-secondary">vs</span> ${ONEDELUX.escapeHtml(event.team2_name)}</h5>
+                <div class="text-secondary mb-2">${ONEDELUX.escapeHtml(event.league_name)}</div>
+                <div class="d-flex justify-content-between text-secondary small mb-2">
+                    <span>${event.score_display}</span>
+                    <span>${ONEDELUX.formatDateTime(event.start_time)}</span>
+                </div>
+                <div class="d-flex justify-content-between text-secondary small mb-3">
+                    <span>Favorite: <strong class="text-light">${ONEDELUX.escapeHtml(event.favorite_team || "N/A")}</strong></span>
+                    <span>${event.total_odds_count} cotes</span>
+                </div>
+                <div class="d-flex gap-2 flex-wrap">
+                    <a class="btn btn-outline-light btn-sm" href="/league?name=${encodeURIComponent(event.league_name)}">Ligue</a>
+                    <a class="btn btn-primary btn-sm" href="/match?event_id=${event.event_id}">Détails</a>
+                </div>
+            </div>
+        </div>
+    `;
+}
+</script>
+{% endblock %}

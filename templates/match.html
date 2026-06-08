@@ -1,0 +1,255 @@
+{% extends "base.html" %}
+
+{% block title %}ONE-DELUX-FAST - Match{% endblock %}
+
+{% block extra_css %}
+<style>
+    .match-hero {
+        padding: 1.25rem;
+    }
+    .odds-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+        gap: 1rem;
+    }
+    .odds-card {
+        padding: 1rem;
+        border-radius: 18px;
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+    <a href="/events" class="btn btn-outline-light btn-sm"><i class="fa-solid fa-arrow-left me-2"></i>Retour aux événements</a>
+    <span class="pill pill-soft"><i class="fa-solid fa-brain me-2"></i>Analyse détaillée</span>
+</div>
+
+<div class="hero-card match-hero mb-4">
+    <div class="row align-items-center g-4">
+        <div class="col-lg-5">
+            <div class="muted-label mb-2">Match</div>
+            <h1 class="section-title mb-2" id="match-title">Chargement...</h1>
+            <div class="text-secondary" id="match-meta">-</div>
+            <div class="mt-3 d-flex gap-2 flex-wrap" id="match-badges"></div>
+        </div>
+        <div class="col-lg-2 text-center">
+            <div class="display-6 fw-bold">VS</div>
+        </div>
+        <div class="col-lg-5 text-lg-end">
+            <div class="muted-label mb-2">Lecture</div>
+            <div class="fs-5" id="match-favorite">-</div>
+            <div class="text-secondary" id="match-score">-</div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4">
+    <div class="col-xl-8">
+        <div class="panel mb-4">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <div>
+                    <div class="section-title mb-1">Prédictions</div>
+                    <div class="section-subtitle">Vainqueur, over/under et répartition de confiance.</div>
+                </div>
+                <button class="btn btn-outline-light btn-sm" id="refreshPrediction"><i class="fa-solid fa-rotate me-2"></i>Actualiser</button>
+            </div>
+            <div id="prediction-loading" class="loading-block">
+                <div class="spinner-ring"></div>
+                <div class="text-secondary">Génération du pronostic...</div>
+            </div>
+            <div id="prediction-stack" class="d-none"></div>
+        </div>
+
+        <div class="panel">
+            <div class="section-title mb-2">Marchés</div>
+            <div class="section-subtitle mb-3">Les cotes principales et additionnelles du match.</div>
+            <div class="odds-grid" id="odds-grid"></div>
+        </div>
+    </div>
+    <div class="col-xl-4">
+        <div class="panel mb-4">
+            <div class="section-title mb-2">Informations</div>
+            <div class="d-grid gap-2 text-secondary" id="match-info"></div>
+        </div>
+        <div class="panel">
+            <div class="section-title mb-2">Lecture rapide</div>
+            <div class="section-subtitle mb-3">Résumé visuel du match pour lecture mobile immédiate.</div>
+            <div class="info-card" id="quick-note">
+                <div class="loading-block py-4">
+                    <div class="spinner-ring"></div>
+                    <div class="text-secondary">Chargement...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="error-state" class="error-state d-none text-danger mt-4"></div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const eventId = {{ event_id }};
+let currentEvent = null;
+
+document.addEventListener("DOMContentLoaded", () => {
+    document.getElementById("refreshPrediction").addEventListener("click", loadMatch);
+    loadMatch();
+});
+
+async function loadMatch() {
+    const error = document.getElementById("error-state");
+    error.classList.add("d-none");
+    try {
+        const eventsData = await ONEDELUX.apiGet("/api/events", { limit: 80 });
+        currentEvent = (eventsData.events || []).find(event => event.event_id === eventId);
+        if (!currentEvent) {
+            throw new Error("Événement non trouvé");
+        }
+        renderEvent(currentEvent);
+        renderOdds(currentEvent);
+        await Promise.all([loadPredictions(), loadQuickNote()]);
+    } catch (err) {
+        error.textContent = err.message;
+        error.classList.remove("d-none");
+    }
+}
+
+function renderEvent(event) {
+    document.getElementById("match-title").textContent = `${event.team1_name} vs ${event.team2_name}`;
+    document.getElementById("match-meta").textContent = `${event.sport_name} · ${event.league_name}`;
+    document.getElementById("match-favorite").textContent = `Favorite: ${event.favorite_team || "N/A"}`;
+    document.getElementById("match-score").textContent = event.score_display || "Score indisponible";
+    document.getElementById("match-badges").innerHTML = `
+        ${ONEDELUX.statusPill(event.is_live)}
+        <span class="pill pill-soft">${ONEDELUX.formatDateTime(event.start_time)}</span>
+        <span class="pill pill-soft">${event.total_odds_count} cotes</span>
+    `;
+    document.getElementById("match-info").innerHTML = `
+        <div><span class="muted-label">Ligue</span><div class="text-light">${ONEDELUX.escapeHtml(event.league_name)}</div></div>
+        <div><span class="muted-label">Sport</span><div class="text-light">${ONEDELUX.escapeHtml(event.sport_name)}</div></div>
+        <div><span class="muted-label">Heure</span><div class="text-light">${ONEDELUX.formatDateTime(event.start_time)}</div></div>
+        <div><span class="muted-label">Favorite</span><div class="text-light">${ONEDELUX.escapeHtml(event.favorite_team || "N/A")}</div></div>
+    `;
+}
+
+function renderOdds(event) {
+    const oddsGrid = document.getElementById("odds-grid");
+    const markets = [...(event.odds || []), ...(event.additional_odds || [])];
+
+    if (!markets.length) {
+        oddsGrid.innerHTML = `<div class="text-secondary">Aucune cote disponible pour ce match.</div>`;
+        return;
+    }
+
+    oddsGrid.innerHTML = markets.map((odd) => {
+        const confidence = Math.max(0, Math.min(100, 100 - Number(odd.coefficient || 0) * 10));
+        return `
+            <div class="odds-card">
+                <div class="d-flex justify-content-between align-items-start gap-3 mb-2">
+                    <div>
+                        <div class="muted-label mb-1">${ONEDELUX.escapeHtml(odd.description || `Type ${odd.bet_type}`)}</div>
+                        <div class="fw-bold">${Number(odd.coefficient || 0).toFixed(2)}</div>
+                    </div>
+                    <span class="pill pill-soft">${odd.parameter !== null && odd.parameter !== undefined ? odd.parameter : "N/A"}</span>
+                </div>
+                <div class="progress-soft mb-2"><div style="width:${confidence}%"></div></div>
+                <div class="text-secondary small">Groupe ${ONEDELUX.escapeHtml(odd.group ?? "-")}</div>
+            </div>
+        `;
+    }).join("");
+}
+
+async function loadPredictions() {
+    const stack = document.getElementById("prediction-stack");
+    const loading = document.getElementById("prediction-loading");
+    loading.classList.remove("d-none");
+    stack.classList.add("d-none");
+
+    const data = await ONEDELUX.apiGet(`/api/predictions/${eventId}`);
+    const predictions = data.predictions || {};
+    const cards = [];
+    if (data.platform) {
+        cards.push(renderPlatformCard(data.platform));
+    }
+    cards.push(...Object.entries(predictions).map(([key, value]) => renderPredictionCard(key, value, data.event)));
+    stack.innerHTML = cards.join("");
+    loading.classList.add("d-none");
+    stack.classList.remove("d-none");
+}
+
+function renderPredictionCard(key, pred, event) {
+    const confidence = Number(pred.confidence || 0);
+    const display = ONEDELUX.normalizePredictionValue(pred.predicted_value, event);
+    return `
+        <div class="prediction-card mb-3">
+            <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+                <div>
+                    <div class="muted-label mb-1">${key.replace(/_/g, " ")}</div>
+                    <h5 class="mb-1">${ONEDELUX.escapeHtml(display)}</h5>
+                </div>
+                <span class="pill ${ONEDELUX.confidenceClass(confidence)}">${(confidence * 100).toFixed(1)}%</span>
+            </div>
+            <div class="progress-soft mb-3"><div style="width:${confidence * 100}%"></div></div>
+            <div class="row g-3 small">
+                <div class="col-md-6">
+                    <div class="muted-label mb-1">Version modèle</div>
+                    <div>${ONEDELUX.escapeHtml(pred.model_version || "-")}</div>
+                </div>
+                <div class="col-md-6">
+                    <div class="muted-label mb-1">Distribution</div>
+                    <div class="text-secondary">${Object.entries(pred.probability_distribution || {}).map(([k, v]) => `${k}: ${(Number(v) * 100).toFixed(1)}%`).join(" · ") || "N/A"}</div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function renderPlatformCard(platform) {
+    return `
+        <div class="prediction-card mb-3">
+            <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+                <div>
+                    <div class="muted-label mb-1">fusion</div>
+                    <h5 class="mb-1">${ONEDELUX.escapeHtml(platform.score_prediction || `${platform.home_goals}-${platform.away_goals}`)}</h5>
+                </div>
+                <span class="pill ${ONEDELUX.confidenceClass((Number(platform.confidence || 0) / 100))}">${Number(platform.confidence || 0).toFixed(1)}%</span>
+            </div>
+            <div class="progress-soft mb-3"><div style="width:${Number(platform.confidence || 0)}%"></div></div>
+            <div class="row g-3 small">
+                <div class="col-md-4">
+                    <div class="muted-label mb-1">Home goals</div>
+                    <div>${ONEDELUX.escapeHtml(String(platform.home_goals ?? "-"))}</div>
+                </div>
+                <div class="col-md-4">
+                    <div class="muted-label mb-1">Away goals</div>
+                    <div>${ONEDELUX.escapeHtml(String(platform.away_goals ?? "-"))}</div>
+                </div>
+                <div class="col-md-4">
+                    <div class="muted-label mb-1">Over/Under 2.5</div>
+                    <div>${ONEDELUX.escapeHtml(platform.over_under_2_5 || "-")}</div>
+                </div>
+            </div>
+            <div class="text-secondary small mt-3">Source: ${ONEDELUX.escapeHtml(platform.source || "-")}</div>
+        </div>
+    `;
+}
+
+async function loadQuickNote() {
+    try {
+        const event = currentEvent || {};
+        document.getElementById("quick-note").innerHTML = `
+            <div class="mb-2 d-flex justify-content-between"><span class="muted-label">Favorite</span><strong>${ONEDELUX.escapeHtml(event.favorite_team || "-")}</strong></div>
+            <div class="mb-2 d-flex justify-content-between"><span class="muted-label">Cotes</span><strong>${ONEDELUX.escapeHtml(String(event.total_odds_count || 0))}</strong></div>
+            <div class="mb-2 d-flex justify-content-between"><span class="muted-label">Statut</span><strong>${event.status_label || "-"}</strong></div>
+            <div class="text-secondary small">Lecture compacte conçue pour l’écran mobile.</div>
+        `;
+    } catch (error) {
+        document.getElementById("quick-note").innerHTML = `<div class="text-danger">Analyse indisponible: ${ONEDELUX.escapeHtml(error.message)}</div>`;
+    }
+}
+</script>
+{% endblock %}

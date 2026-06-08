@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+
+{% block title %}ONE-DELUX-FAST - Accueil{% endblock %}
+
+{% block content %}
+<div class="hero-card p-4 p-lg-5 mb-4">
+    <div class="row align-items-center g-4">
+        <div class="col-lg-8">
+            <div class="eyebrow mb-3"><i class="fa-solid fa-wave-square"></i> Vue stratégique</div>
+            <h1 class="hero-title mb-3">Une plateforme d'analyse sportive claire, cohérente et exploitable.</h1>
+            <p class="hero-copy mb-4">
+                ONE-DELUX-FAST centralise les événements, les cotes et les prédictions dans une interface lisible,
+                avec un flux consolidé et des pages pensées pour l'usage opérationnel.
+            </p>
+            <div class="d-flex flex-wrap gap-2 stack-mobile">
+                <a href="/dashboard" class="btn btn-primary"><i class="fa-solid fa-chart-column me-2"></i>Ouvrir le dashboard</a>
+                <a href="/events" class="btn btn-outline-light"><i class="fa-solid fa-flag me-2"></i>Voir les événements</a>
+            </div>
+        </div>
+        <div class="col-lg-4">
+            <div class="info-card h-100">
+                <div class="muted-label mb-2">État du système</div>
+                <h3 class="mb-3">Connecté et prêt</h3>
+                <div class="d-grid gap-2">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span>Flux central</span>
+                        <span class="pill pill-soft">{{ 'Actif' if modules_status.api_client else 'Inactif' }}</span>
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span>Gestion des données</span>
+                        <span class="pill pill-soft">{{ 'Actif' if modules_status.data_manager else 'Inactif' }}</span>
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span>Moteur de prédiction</span>
+                        <span class="pill pill-soft">{{ 'Actif' if modules_status.prediction_engine else 'Inactif' }}</span>
+                    </div>
+                    <div class="text-secondary small mt-2">Dernière ouverture: {{ current_time }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3 mb-4" id="summary-metrics">
+    <div class="col-md-3"><div class="metric-card"><div class="metric-value" id="metric-events">-</div><div class="metric-label">Événements</div></div></div>
+    <div class="col-md-3"><div class="metric-card"><div class="metric-value" id="metric-live">-</div><div class="metric-label">En direct</div></div></div>
+    <div class="col-md-3"><div class="metric-card"><div class="metric-value" id="metric-leagues">-</div><div class="metric-label">Ligues</div></div></div>
+    <div class="col-md-3"><div class="metric-card"><div class="metric-value" id="metric-sports">-</div><div class="metric-label">Sports</div></div></div>
+</div>
+
+<div class="row g-4">
+    <div class="col-xl-8">
+        <div class="panel">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <div>
+                    <div class="section-title">Ligues disponibles</div>
+                    <div class="section-subtitle">Agrégées depuis le flux central et nettoyées côté backend.</div>
+                </div>
+                <button class="btn btn-outline-light btn-sm" id="refreshIndex"><i class="fa-solid fa-rotate me-2"></i>Rafraîchir</button>
+            </div>
+            <div id="league-loading" class="loading-block">
+                <div class="spinner-ring"></div>
+                <div class="text-secondary">Chargement des ligues...</div>
+            </div>
+            <div id="league-grid" class="row g-3 d-none"></div>
+            <div id="league-empty" class="empty-state d-none">
+                <i class="fa-solid fa-trophy fa-2xl mb-3 text-secondary"></i>
+                <div>Aucune ligue disponible pour le moment.</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-4">
+        <div class="panel">
+                    <div class="section-title">Actions rapides</div>
+            <div class="d-grid gap-2 mt-3">
+                <button class="btn btn-primary" id="refreshData"><i class="fa-solid fa-rotate me-2"></i>Rafraîchir les données</button>
+                <a class="btn btn-outline-light" href="/dashboard"><i class="fa-solid fa-gauge-high me-2"></i>Ouvrir le dashboard</a>
+                <a class="btn btn-outline-light" href="/events"><i class="fa-solid fa-list me-2"></i>Liste complète</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+    loadIndex();
+    document.getElementById("refreshIndex").addEventListener("click", loadIndex);
+    document.getElementById("refreshData").addEventListener("click", async () => {
+        await ONEDELUX.apiPost("/api/refresh");
+        loadIndex();
+    });
+});
+
+async function loadIndex() {
+    await Promise.all([loadMetrics(), loadLeagues()]);
+}
+
+async function loadMetrics() {
+    try {
+        const data = await ONEDELUX.apiGet("/api/stats");
+        const summary = data.summary || {};
+        document.getElementById("metric-events").textContent = ONEDELUX.formatCount(summary.total_events || 0);
+        document.getElementById("metric-live").textContent = ONEDELUX.formatCount(summary.live_events || 0);
+        document.getElementById("metric-leagues").textContent = ONEDELUX.formatCount(summary.leagues_count || 0);
+        document.getElementById("metric-sports").textContent = ONEDELUX.formatCount(summary.sports_count || 0);
+    } catch (error) {
+        console.warn(error);
+    }
+}
+
+async function loadLeagues() {
+    const loading = document.getElementById("league-loading");
+    const grid = document.getElementById("league-grid");
+    const empty = document.getElementById("league-empty");
+    try {
+        const data = await ONEDELUX.apiGet("/api/leagues", { limit: 40 });
+        const leagues = data.leagues || [];
+        loading.classList.add("d-none");
+        grid.innerHTML = leagues.length ? leagues.map(renderLeagueCard).join("") : "";
+        grid.classList.toggle("d-none", leagues.length === 0);
+        empty.classList.toggle("d-none", leagues.length !== 0);
+    } catch (error) {
+        loading.innerHTML = `<div class="text-danger">Impossible de charger les ligues: ${ONEDELUX.escapeHtml(error.message)}</div>`;
+        grid.classList.add("d-none");
+        empty.classList.add("d-none");
+    }
+}
+
+function renderLeagueCard(league) {
+    const liveRatio = league.total_events ? Math.round((league.live_events / league.total_events) * 100) : 0;
+    return `
+        <div class="col-md-6">
+            <div class="league-card p-3 h-100">
+                <div class="d-flex justify-content-between align-items-start gap-3">
+                    <div>
+                        <div class="muted-label mb-2">${ONEDELUX.escapeHtml(league.sport_name || "Sport")}</div>
+                        <h5 class="mb-1">${ONEDELUX.escapeHtml(league.league_name)}</h5>
+                        <div class="text-secondary small">${league.total_events} événements</div>
+                    </div>
+                    ${ONEDELUX.statusPill(league.live_events > 0)}
+                </div>
+                <div class="progress-soft my-3"><div style="width:${liveRatio}%"></div></div>
+                <div class="d-flex justify-content-between text-secondary small">
+                    <span>${league.live_events} live</span>
+                    <span>${league.upcoming_events} à venir</span>
+                </div>
+                <div class="d-flex gap-2 mt-3 flex-wrap">
+                    <a class="btn btn-outline-light btn-sm" href="/league?name=${encodeURIComponent(league.league_name)}">Ouvrir la ligue</a>
+                    <a class="btn btn-outline-light btn-sm" href="/predictions?event_id=${league.sample_events?.[0]?.event_id || 0}">Voir un match</a>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+</script>
+{% endblock %}

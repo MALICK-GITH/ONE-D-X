@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+
+{% block title %}ONE-DELUX-FAST - {{ league_name }}{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-4">
+    <div>
+        <a href="/" class="btn btn-outline-light btn-sm mb-3"><i class="fa-solid fa-arrow-left me-2"></i>Retour</a>
+        <div class="eyebrow mb-2"><i class="fa-solid fa-trophy"></i> Ligue</div>
+        <h1 class="section-title mb-1">{{ league_name }}</h1>
+        <div class="section-subtitle">Événements de la ligue filtrés depuis le flux central normalisé.</div>
+    </div>
+    <div class="d-flex gap-2 stack-mobile">
+        <button class="btn btn-primary" id="refreshLeague"><i class="fa-solid fa-rotate me-2"></i>Rafraîchir</button>
+        <a class="btn btn-outline-light" href="/events">Tous les événements</a>
+    </div>
+</div>
+
+<div class="row g-3 mb-4" id="league-summary">
+    <div class="col-md-4"><div class="metric-card"><div class="metric-value" id="league-total">-</div><div class="metric-label">Matchs</div></div></div>
+    <div class="col-md-4"><div class="metric-card"><div class="metric-value" id="league-live">-</div><div class="metric-label">En direct</div></div></div>
+    <div class="col-md-4"><div class="metric-card"><div class="metric-value" id="league-upcoming">-</div><div class="metric-label">À venir</div></div></div>
+</div>
+
+<div id="loading" class="loading-block">
+    <div class="spinner-ring"></div>
+    <div class="text-secondary">Chargement des matchs...</div>
+</div>
+<div id="matches-grid" class="row g-3 d-none"></div>
+<div id="empty-state" class="empty-state d-none">
+    <i class="fa-regular fa-folder-open fa-2xl mb-3 text-secondary"></i>
+    <div>Aucun match trouvé pour cette ligue.</div>
+</div>
+<div id="error-state" class="error-state d-none text-danger"></div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const leagueName = {{ league_name|tojson }};
+
+document.addEventListener("DOMContentLoaded", () => {
+    document.getElementById("refreshLeague").addEventListener("click", loadLeague);
+    loadLeague();
+});
+
+async function loadLeague() {
+    const loading = document.getElementById("loading");
+    const grid = document.getElementById("matches-grid");
+    const empty = document.getElementById("empty-state");
+    const error = document.getElementById("error-state");
+
+    loading.classList.remove("d-none");
+    grid.classList.add("d-none");
+    empty.classList.add("d-none");
+    error.classList.add("d-none");
+
+    try {
+        const data = await ONEDELUX.apiGet("/api/events", { limit: 80, league: leagueName });
+        const events = data.events || [];
+        document.getElementById("league-total").textContent = ONEDELUX.formatCount(events.length);
+        document.getElementById("league-live").textContent = ONEDELUX.formatCount(events.filter(e => e.is_live).length);
+        document.getElementById("league-upcoming").textContent = ONEDELUX.formatCount(events.filter(e => !e.is_live).length);
+        grid.innerHTML = events.length ? events.map(renderCard).join("") : "";
+        grid.classList.toggle("d-none", events.length === 0);
+        empty.classList.toggle("d-none", events.length !== 0);
+        loading.classList.add("d-none");
+    } catch (err) {
+        loading.classList.add("d-none");
+        error.textContent = err.message;
+        error.classList.remove("d-none");
+    }
+}
+
+function renderCard(event) {
+    return `
+        <div class="col-lg-6 col-xl-4">
+            <div class="event-card p-3 h-100">
+                <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+                    ${ONEDELUX.statusPill(event.is_live)}
+                    <span class="pill pill-soft">${ONEDELUX.escapeHtml(event.sport_name)}</span>
+                </div>
+                <h5 class="mb-1">${ONEDELUX.escapeHtml(event.team1_name)} <span class="text-secondary">vs</span> ${ONEDELUX.escapeHtml(event.team2_name)}</h5>
+                <div class="text-secondary mb-2">${ONEDELUX.formatDateTime(event.start_time)}</div>
+                <div class="d-flex justify-content-between text-secondary small mb-3">
+                    <span>Favorite: <strong class="text-light">${ONEDELUX.escapeHtml(event.favorite_team || "N/A")}</strong></span>
+                    <span>${event.total_odds_count} cotes</span>
+                </div>
+                <div class="progress-soft mb-3"><div style="width:${Math.min(event.total_odds_count * 6, 100)}%"></div></div>
+                <div class="d-flex gap-2">
+                    <a class="btn btn-outline-light btn-sm" href="/match?event_id=${event.event_id}">Détails</a>
+                    <a class="btn btn-primary btn-sm" href="/predictions?event_id=${event.event_id}">Prédictions</a>
+                </div>
+            </div>
+        </div>
+    `;
+}
+</script>
+{% endblock %}

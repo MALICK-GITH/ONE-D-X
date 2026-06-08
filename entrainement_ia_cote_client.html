@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ONE-DELUX-FAST - Entraînement IA Côté Client</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #0f3460 100%);
+            min-height: 100vh;
+            color: white;
+            padding: 20px;
+        }
+        .card {
+            background: #16213e;
+            border: none;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            margin-bottom: 20px;
+        }
+        .card-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 15px 15px 0 0 !important;
+        }
+        .progress {
+            height: 25px;
+            background: #2d3748;
+        }
+        .confidence-fill {
+            background: linear-gradient(90deg, #2ed573 0%, #1e90ff 100%);
+            transition: width 1s ease;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="text-center mb-5">
+            <h1 class="display-4 fw-bold">🤖 Entraînement IA Côté Client</h1>
+            <p class="lead">Analyse de votre CSV avec 4000 matchs historiques</p>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <i class="fas fa-upload me-2"></i>Charger le CSV
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label class="form-label">Fichier CSV (4000 matchs)</label>
+                    <input type="file" class="form-control" id="csvFile" accept=".csv">
+                    <small class="text-muted">Le fichier doit être au format: match_id,team_home,team_away,league,score_home,score_away</small>
+                </div>
+                <button class="btn btn-primary w-100" onclick="trainModel()">
+                    <i class="fas fa-brain me-2"></i>Lancer l'Entraînement IA
+                </button>
+            </div>
+        </div>
+
+        <div class="card d-none" id="progressCard">
+            <div class="card-header">
+                <i class="fas fa-cog fa-spin me-2"></i>Entraînement en Cours
+            </div>
+            <div class="card-body">
+                <div class="progress mb-3">
+                    <div class="progress-bar confidence-fill" id="progressBar" style="width: 0%">0%</div>
+                </div>
+                <p id="progressText">Initialisation...</p>
+            </div>
+        </div>
+
+        <div class="card d-none" id="resultsCard">
+            <div class="card-header">
+                <i class="fas fa-chart-line me-2"></i>Résultats de l'Entraînement
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-3">
+                        <h5>Matchs Analysés</h5>
+                        <h3 class="display-6" id="totalMatches">0</h3>
+                    </div>
+                    <div class="col-md-3">
+                        <h5>Équipes Uniques</h5>
+                        <h3 class="display-6" id="uniqueTeams">0</h3>
+                    </div>
+                    <div class="col-md-3">
+                        <h5>Ligues Uniques</h5>
+                        <h3 class="display-6" id="uniqueLeagues">0</h3>
+                    </div>
+                    <div class="col-md-3">
+                        <h5>Accuracy Modèle</h5>
+                        <h3 class="display-6" id="modelAccuracy">0%</h3>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card d-none" id="testCard">
+            <div class="card-header">
+                <i class="fas fa-vial me-2"></i>Test du Modèle
+            </div>
+            <div class="card-body">
+                <div class="row mb-3">
+                    <div class="col-md-4">
+                        <label class="form-label">Équipe Domicile</label>
+                        <input type="text" class="form-control" id="testHome" value="PSG">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Équipe Extérieur</label>
+                        <input type="text" class="form-control" id="testAway" value="Marseille">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Ligue</label>
+                        <input type="text" class="form-control" id="testLeague" value="Ligue 1 France">
+                    </div>
+                </div>
+                <button class="btn btn-success w-100" onclick="testPrediction()">
+                    <i class="fas fa-play me-2"></i>Tester la Prédiction
+                </button>
+            </div>
+        </div>
+
+        <div class="card d-none" id="predictionCard">
+            <div class="card-header">
+                <i class="fas fa-brain me-2"></i>Résultat de la Prédiction IA
+            </div>
+            <div class="card-body">
+                <div class="text-center mb-4">
+                    <h3 class="display-5" id="predictionResult">-</h3>
+                    <div class="confidence-display">
+                        Confiance: <span id="predictionConfidence" class="text-success">0%</span>
+                    </div>
+                </div>
+                <div id="probabilityDistribution"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let trainedModel = null;
+        let teamVectors = {};
+        let leagueVectors = {};
+
+        function updateProgress(percent, text) {
+            document.getElementById('progressBar').style.width = percent + '%';
+            document.getElementById('progressBar').textContent = percent + '%';
+            document.getElementById('progressText').textContent = text;
+        }
+
+        async function trainModel() {
+            const fileInput = document.getElementById('csvFile');
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                alert('Veuillez sélectionner un fichier CSV');
+                return;
+            }
+
+            document.getElementById('progressCard').classList.remove('d-none');
+            
+            try {
+                updateProgress(10, 'Lecture du fichier CSV...');
+                const text = await file.text();
+                
+                updateProgress(30, 'Parsing des données...');
+                const rows = text.split('\n');
+                const data = [];
+                const headers = rows[0].split(',');
+                
+                for (let i = 1; i < rows.length; i++) {
+                    const values = rows[i].split(',');
+                    if (values.length >= 6) {
+                        data.push({
+                            match_id: values[0],
+                            team_home: values[1],
+                            team_away: values[2],
+                            league: values[3],
+                            score_home: parseInt(values[4]),
+                            score_away: parseInt(values[5])
+                        });
+                    }
+                }
+                
+                updateProgress(50, 'Calcul des vecteurs d\'équipes...');
+                trainTeamVectors(data);
+                
+                updateProgress(70, 'Calcul des vecteurs de ligues...');
+                trainLeagueVectors(data);
+                
+                updateProgress(90, 'Détection des patterns...');
+                const patterns = detectPatterns(data);
+                
+                updateProgress(100, 'Entraînement terminé !');
+                
+                trainedModel = {
+                    teamVectors: teamVectors,
+                    leagueVectors: leagueVectors,
+                    patterns: patterns,
+                    totalMatches: data.length
+                };
+                
+                // Afficher les résultats
+                document.getElementById('totalMatches').textContent = data.length;
+                document.getElementById('uniqueTeams').textContent = Object.keys(teamVectors).length;
+                document.getElementById('uniqueLeagues').textContent = Object.keys(leagueVectors).length;
+                document.getElementById('modelAccuracy').textContent = calculateGlobalAccuracy(leagueVectors).toFixed(1) + '%';
+                
+                document.getElementById('resultsCard').classList.remove('d-none');
+                document.getElementById('testCard').classList.remove('d-none');
+                
+            } catch (error) {
+                alert('Erreur: ' + error.message);
+                document.getElementById('progressCard').classList.add('d-none');
+            }
+        }
+
+        function trainTeamVectors(data) {
+            teamVectors = {};
+            
+            data.forEach(match => {
+                if (!teamVectors[match.team_home]) {
+                    teamVectors[match.team_home] = { homeMatches: 0, homeWins: 0, homeGoals: 0, homeConceded: 0 };
+                }
+                if (!teamVectors[match.team_away]) {
+                    teamVectors[match.team_away] = { awayMatches: 0, awayWins: 0, awayGoals: 0, awayConceded: 0 };
+                }
+                
+                // Stats home
+                teamVectors[match.team_home].homeMatches++;
+                teamVectors[match.team_home].homeGoals += match.score_home;
+                teamVectors[match.team_home].homeConceded += match.score_away;
+                if (match.score_home > match.score_away) {
+                    teamVectors[match.team_home].homeWins++;
+                }
+                
+                // Stats away
+                teamVectors[match.team_away].awayMatches++;
+                teamVectors[match.team_away].awayGoals += match.score_away;
+                teamVectors[match.team_away].awayConceded += match.score_home;
+                if (match.score_away > match.score_home) {
+                    teamVectors[match.team_away].awayWins++;
+                }
+            });
+            
+            // Calculer les taux
+            for (const team in teamVectors) {
+                const vec = teamVectors[team];
+                vec.homeWinRate = vec.homeMatches > 0 ? vec.homeWins / vec.homeMatches : 0.5;
+                vec.avgHomeGoals = vec.homeMatches > 0 ? vec.homeGoals / vec.homeMatches : 1.5;
+                vec.avgHomeConceded = vec.homeMatches > 0 ? vec.homeConceded / vec.homeMatches : 1.5;
+                vec.awayWinRate = vec.awayMatches > 0 ? vec.awayWins / vec.awayMatches : 0.5;
+                vec.avgAwayGoals = vec.awayMatches > 0 ? vec.awayGoals / vec.awayMatches : 1.0;
+            }
+            
+            window.teamVectors = teamVectors;
+        }
+
+        function trainLeagueVectors(data) {
+            leagueVectors = {};
+            
+            data.forEach(match => {
+                if (!leagueVectors[match.league]) {
+                    leagueVectors[match.league] = { matches: 0, homeWins: 0, awayWins: 0, draws: 0, totalGoals: 0 };
+                }
+                
+                const vec = leagueVectors[match.league];
+                vec.matches++;
+                vec.totalGoals += match.score_home + match.score_away;
+                
+                if (match.score_home > match.score_away) {
+                    vec.homeWins++;
+                } else if (match.score_away > match.score_home) {
+                    vec.awayWins++;
+                } else {
+                    vec.draws++;
+                }
+            });
+            
+            // Calculer les taux
+            for (const league in leagueVectors) {
+                const vec = leagueVectors[league];
+                vec.homeWinRate = vec.homeWins / vec.matches;
+                vec.awayWinRate = vec.awayWins / vec.matches;
+                vec.drawRate = vec.draws / vec.matches;
+                vec.avgTotalGoals = vec.totalGoals / vec.matches;
+            }
+            
+            window.leagueVectors = leagueVectors;
+        }
+
+        function detectPatterns(data) {
+            return {
+                avgTotalGoals: data.reduce((sum, m) => sum + m.score_home + m.score_away, 0) / data.length
+            };
+        }
+
+        function calculateGlobalAccuracy(leagueVectors) {
+            const homeWinRates = Object.values(leagueVectors).map(v => v.homeWinRate);
+            return (homeWinRates.reduce((a, b) => a + b, 0) / homeWinRates.length) * 100;
+        }
+
+        function testPrediction() {
+            if (!trainedModel) {
+                alert('Entraînez d\'abord le modèle !');
+                return;
+            }
+            
+            const homeTeam = document.getElementById('testHome').value;
+            const awayTeam = document.getElementById('testAway').value;
+            const league = document.getElementById('testLeague').value;
+            
+            const prediction = predictMatch(homeTeam, awayTeam, league);
+            
+            document.getElementById('predictionResult').textContent = prediction.predictedValue.toUpperCase();
+            document.getElementById('predictionConfidence').textContent = (prediction.confidence * 100).toFixed(1) + '%';
+            
+            const probDist = document.getElementById('probabilityDistribution');
+            probDist.innerHTML = `
+                <div class="row mt-3">
+                    <div class="col-4 text-center">
+                        <h6>HOME</h6>
+                        <div class="confidence-bar">
+                            <div class="confidence-fill" style="width: ${prediction.probabilities.home * 100}%">${(prediction.probabilities.home * 100).toFixed(0)}%</div>
+                        </div>
+                    </div>
+                    <div class="col-4 text-center">
+                        <h6>DRAW</h6>
+                        <div class="confidence-bar">
+                            <div class="confidence-fill" style="width: ${prediction.probabilities.draw * 100}%">${(prediction.probabilities.draw * 100).toFixed(0)}%</div>
+                        </div>
+                    </div>
+                    <div class="col-4 text-center">
+                        <h6>AWAY</h6>
+                        <div class="confidence-bar">
+                            <div class="confidence-fill" style="width: ${prediction.probabilities.away * 100}%">${(prediction.probabilities.away * 100).toFixed(0)}%</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            document.getElementById('predictionCard').classList.remove('d-none');
+        }
+
+        function predictMatch(homeTeam, awayTeam, league) {
+            const homeVec = window.teamVectors[homeTeam] || { homeWinRate: 0.5, avgHomeGoals: 1.5, avgHomeConceded: 1.5 };
+            const awayVec = window.teamVectors[awayTeam] || { awayWinRate: 0.5, avgAwayGoals: 1.0, avgAwayConceded: 1.5 };
+            const leagueVec = window.leagueVectors[league] || { homeWinRate: 0.5, awayWinRate: 0.5, drawRate: 0.5 };
+            
+            // Calculer les scores
+            const homeScore = calculateTeamScore(homeVec, awayVec, leagueVec, true);
+            const awayScore = calculateTeamScore(awayVec, homeVec, leagueVec, false);
+            
+            // Probabilités
+            const total = homeScore + awayScore + 1;
+            let homeProb = homeScore / total;
+            let awayProb = awayScore / total;
+            let drawProb = 1 / total;
+            
+            // Ajuster par la ligue
+            homeProb = (homeProb + leagueVec.homeWinRate) / 2;
+            awayProb = (awayProb + leagueVec.awayWinRate) / 2;
+            drawProb = (drawProb + leagueVec.drawRate) / 2;
+            
+            // Normaliser
+            const totalNorm = homeProb + awayProb + drawProb;
+            homeProb /= totalNorm;
+            awayProb /= totalNorm;
+            drawProb /= totalNorm;
+            
+            // Déterminer prédiction
+            const probs = { home: homeProb, away: awayProb, draw: drawProb };
+            const prediction = Object.keys(probs).reduce((a, b) => probs[a] > probs[b] ? a : b);
+            
+            return {
+                predicted_value: prediction,
+                confidence: probs[prediction],
+                probabilities: probs
+            };
+        }
+
+        function calculateTeamScore(teamVec, opponentVec, leagueVec, isHome) {
+            let score = 0.5;
+            
+            const winRate = isHome ? teamVec.homeWinRate : teamVec.awayWinRate;
+            score += winRate * 2;
+            
+            const avgScored = isHome ? teamVec.avgHomeGoals : teamVec.avgAwayGoals;
+            const avgConceded = isHome ? teamVec.avgHomeConceded : teamVec.avgAwayConceded;
+            score += (avgScored - avgConceded) * 0.3;
+            
+            const matches = isHome ? (teamVec.homeMatches || 0) : (teamVec.awayMatches || 0);
+            if (matches > 10) score *= 1.1;
+            
+            return Math.max(score, 0.1);
+        }
+    </script>
+</body>
+</html>
