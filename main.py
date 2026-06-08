@@ -6,6 +6,7 @@ Script principal pour tester l'intégration API
 """
 
 import logging
+import os
 import sys
 from datetime import datetime
 
@@ -260,19 +261,41 @@ def test_specific_bet_types():
             print(f"  - Under: {over_under[param][10].coefficient:.3f}")
 
 
+def start_web_server():
+    """
+    Démarre l'application web Flask.
+    Utilisé en production et sur Render via la variable PORT.
+    """
+    from app import app as web_app
+
+    port = int(os.getenv("PORT", "5000"))
+    host = os.getenv("HOST", "0.0.0.0")
+
+    print("Demarrage du serveur web ONE-DELUX-FAST...")
+    print(f"Ecoute sur {host}:{port}")
+    web_app.run(host=host, port=port, debug=False, use_reloader=False)
+
+
 if __name__ == "__main__":
-    try:
-        # Test d'intégration complet
-        test_integration()
-        
-        print("\n")
-        
-        # Test des types de paris spécifiques
-        test_specific_bet_types()
-        
-    except KeyboardInterrupt:
-        print("\n⚠️ Interruption par l'utilisateur")
-    except Exception as e:
-        print(f"\n❌ Erreur: {e}")
-        import traceback
-        traceback.print_exc()
+    # En environnement de déploiement, main.py doit garder un port ouvert.
+    # En local, on conserve les tests d'intégration par défaut.
+    run_server = os.getenv("PORT") or os.getenv("RENDER") == "true" or os.getenv("RUN_WEB_SERVER") == "true"
+
+    if run_server:
+        start_web_server()
+    else:
+        try:
+            # Test d'intégration complet
+            test_integration()
+
+            print("\n")
+
+            # Test des types de paris spécifiques
+            test_specific_bet_types()
+
+        except KeyboardInterrupt:
+            print("\n⚠️ Interruption par l'utilisateur")
+        except Exception as e:
+            print(f"\n❌ Erreur: {e}")
+            import traceback
+            traceback.print_exc()
