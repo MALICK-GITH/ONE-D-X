@@ -1,8 +1,9 @@
 {
   "name": "AI-P Platform Integration Manifest",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "base_url": "https://ai-p-hcuo.onrender.com",
   "content_type": "application/json",
+  "platform": "FastAPI",
   "auth": {
     "type": "none"
   },
@@ -12,7 +13,54 @@
       "Content-Type": "application/json"
     }
   },
+  "navigation": {
+    "root": "/",
+    "health": "/health",
+    "docs": "/docs",
+    "openapi": "/openapi.json",
+    "integration_manifest": "/platform_integration.json"
+  },
   "endpoints": [
+    {
+      "method": "GET",
+      "path": "/",
+      "purpose": "Root JSON entrypoint for platform discovery",
+      "response_example": {
+        "status": "ok",
+        "name": "ONE DELUX AI 3.0",
+        "version": "3.0.0",
+        "docs": "/docs",
+        "openapi": "/openapi.json",
+        "health": "/api/status",
+        "models": "/api/models",
+        "predict": "/api/predict",
+        "integration_manifest": "/platform_integration.json"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/health",
+      "purpose": "Simple health check for uptime monitors",
+      "response_example": {
+        "status": "ok",
+        "models_loaded": 4
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/platform_integration.json",
+      "purpose": "Machine-readable integration manifest for other platforms"
+    },
+    {
+      "method": "GET",
+      "path": "/docs",
+      "purpose": "Interactive Swagger documentation"
+    },
+    {
+      "method": "GET",
+      "path": "/openapi.json",
+      "purpose": "OpenAPI schema for SDKs and tooling"
+    },
     {
       "method": "GET",
       "path": "/api/status",
@@ -25,12 +73,54 @@
     {
       "method": "GET",
       "path": "/api/models",
-      "purpose": "List loaded models and their metadata"
+      "purpose": "List loaded models and their metadata",
+      "response_example": {
+        "models": [
+          {
+            "name": "over_under_2.5.joblib",
+            "target": "over_under_2.5",
+            "model_type": "random_forest_csv_baseline",
+            "trained_at": "2026-06-08T04:53:10.658418",
+            "feature_columns": [
+              "team_home_encoded",
+              "team_away_encoded",
+              "league_encoded",
+              "league_group_encoded",
+              "home_form_rate",
+              "away_form_rate",
+              "home_attack_avg",
+              "away_attack_avg",
+              "home_defense_avg",
+              "away_defense_avg",
+              "head_to_head_matches",
+              "head_to_head_home_winrate",
+              "hour",
+              "day_of_week"
+            ],
+            "encoders": [
+              "team_home",
+              "team_away",
+              "league",
+              "league_group"
+            ],
+            "metrics": {
+              "accuracy": 0.8559633027522936,
+              "balanced_accuracy": 0.5549916679291016
+            },
+            "model_class": "RandomForestClassifier",
+            "n_features_in": 14,
+            "pipeline_steps": []
+          }
+        ]
+      }
     },
     {
       "method": "POST",
       "path": "/api/predict",
       "purpose": "Full fused prediction response",
+      "required_headers": {
+        "Content-Type": "application/json"
+      },
       "request_schema": {
         "league": "string",
         "homeTeam": "string",
@@ -48,6 +138,11 @@
         "head_to_head_matches": "optional integer",
         "head_to_head_home_winrate": "optional number"
       },
+      "constraints": [
+        "Do not invent new features.",
+        "Do not change column order.",
+        "Use the same encoders and preprocessing as training."
+      ],
       "response_example": {
         "home_goals": 2,
         "away_goals": 1,
@@ -61,7 +156,16 @@
     {
       "method": "POST",
       "path": "/api/predict/fusion",
-      "purpose": "Return the fused prediction payload"
+      "purpose": "Return the fused prediction payload",
+      "response_example": {
+        "home_goals": 2,
+        "away_goals": 1,
+        "total_goals": 3,
+        "over_under_2_5": "OVER",
+        "score_prediction": "2-1",
+        "confidence": 79.9,
+        "source": "ONE DELUX AI 2.0"
+      }
     },
     {
       "method": "POST",
@@ -130,7 +234,21 @@
       "Keep the same column order as training.",
       "Reuse the same label encoders and normalization rules.",
       "Use the same preprocessing pipeline as the training script."
-    ]
+    ],
+    "error_contract": {
+      "validation_error": {
+        "detail": "Validation error",
+        "errors": {
+          "0": "field required"
+        }
+      },
+      "not_found": {
+        "detail": "Not Found"
+      },
+      "internal_error": {
+        "detail": "Internal server error"
+      }
+    }
   },
   "example_request": {
     "league": "Premier League",

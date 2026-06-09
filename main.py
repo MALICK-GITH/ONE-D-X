@@ -263,17 +263,19 @@ def test_specific_bet_types():
 
 def start_web_server():
     """
-    Démarre l'application web Flask.
+    Démarre l'application FastAPI conforme au manifeste d'intégration.
     Utilisé en production et sur Render via la variable PORT.
     """
-    from app import app as web_app
+    from platform_service import app as web_app
 
     port = int(os.getenv("PORT", "5000"))
     host = os.getenv("HOST", "0.0.0.0")
 
-    print("Demarrage du serveur web ONE-DELUX-FAST...")
+    print("Demarrage du serveur API ONE-DELUX-FAST...")
     print(f"Ecoute sur {host}:{port}")
-    web_app.run(host=host, port=port, debug=False, use_reloader=False)
+    import uvicorn
+
+    uvicorn.run(web_app, host=host, port=port, log_level="info")
 
 
 if __name__ == "__main__":
